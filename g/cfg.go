@@ -9,8 +9,23 @@ import (
 )
 
 type HttpConfig struct {
-	Enabled bool   `json:"enabled"`
-	Listen  string `json:"listen"`
+	Enable bool   `json:"enable"`
+	Listen string `json:"listen"`
+}
+
+type ZkConfig struct { //drrs
+	Ip      string `json:"ip"`
+	Addr    string `json:"addr"`
+	Timeout int    `json:"timeout"`
+}
+
+type DrrsConfig struct { //drrs
+	Enabled  bool      `json:"enabled"`
+	UseZk    bool      `json:"useZk"`
+	Dest     string    `json:"dest"`
+	Replicas int32     `json:"replicas"`
+	MaxIdle  int32     `json:"maxIdle"`
+	Zk       *ZkConfig `json:"zk"`
 }
 
 type GraphConfig struct {
@@ -26,6 +41,7 @@ type GlobalConfig struct {
 	Debug string       `json:"debug"`
 	Http  *HttpConfig  `json:"http"`
 	Graph *GraphConfig `json:"graph"`
+	Drrs  *DrrsConfig  `json:"drrs"` //drrs
 }
 
 var (

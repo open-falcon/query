@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net"
 	"time"
 
 	cmodel "github.com/open-falcon/common/model"
 	cutils "github.com/open-falcon/common/utils"
+	"github.com/samuel/go-zookeeper/zk"
 	rings "github.com/toolkits/consistent/rings"
 	nset "github.com/toolkits/container/set"
 	spool "github.com/toolkits/pool/simple_conn_pool"
+	"github.com/jdjr/drrs/golang/sdk"
 
 	"github.com/open-falcon/query/g"
 )
@@ -26,7 +29,10 @@ var (
 // pk -> node
 var (
 	GraphNodeRing *rings.ConsistentHashNodeRing
+	DrrsNodeRing  *rings.ConsistentHashNodeRing //drrs
 )
+
+var drrs_master_list []string //drrs
 
 func Start() {
 	initNodeRings()
@@ -34,9 +40,135 @@ func Start() {
 	log.Println("graph.Start ok")
 }
 
+//监听zk中的master节点发生变化
+func watchZNode(ch <-chan zk.Event) {
+	cfg := g.Config()
+	drrsConfig := cfg.Drrs
+	for {
+		e := <-ch
+		if e.Type == zk.EventNodeChildrenChanged {
+			var master_list []string
+			c, _, err := zk.Connect([]string{drrsConfig.Zk.Ip}, time.Second*time.Duration(drrsConfig.Zk.Timeout))
+			if err != nil {
+				drrs_master_list = nil
+				DrrsNodeRing = nil
+				log.Fatalln("[DRRS FATALL] watchZNode: ZK connection error: ", err)
+			}
+			children, stat, zkChannel, err := c.ChildrenW(drrsConfig.Zk.Addr)
+			if err != nil {
+				drrs_master_list = nil
+				DrrsNodeRing = nil
+				log.Fatalln("[DRRS FATALL] watchZNode: ZK get children error: ", err)
+			}
+			nzk := stat.NumChildren
+			if nzk <= 0 {
+				drrs_master_list = nil
+				DrrsNodeRing = nil
+				log.Fatalln("[DRRS FATALL] watchZNode: ZK contents error: ", zk.ErrNoChildrenForEphemerals)
+			}
+			for i := range children {
+				absAddr := fmt.Sprintf("%s/%s", drrsConfig.Zk.Addr, children[i])
+				data_get, _, err := c.Get(absAddr)
+				if err != nil {
+					drrs_master_list = nil
+					DrrsNodeRing = nil
+					log.Fatalln("[DRRS FATALL] watchZNode: ZK get data error: ", err)
+				}
+				data := string(data_get)
+				if data == "" {
+					drrs_master_list = nil
+					DrrsNodeRing = nil
+					log.Fatalln("[DRRS FATALL] watchZNode: ZK data error: ", zk.ErrInvalidPath)
+				}
+				master_list = append(master_list, data)
+			}
+			drrs_master_list = master_list
+			DrrsNodeRing = rings.NewConsistentHashNodesRing(cfg.Drrs.Replicas, drrs_master_list)
+			go watchZNode(zkChannel)
+			break
+		}
+	}
+}
+
+func initDrrsMasterList(drrsConfig *g.DrrsConfig) error { //drrs
+	if !drrsConfig.Enabled {
+		drrs_master_list = nil
+		return nil
+	}
+	if !drrsConfig.UseZk {
+		drrs_master_list = append(drrs_master_list, drrsConfig.Dest)
+		return nil
+	}
+
+	c, _, err := zk.Connect([]string{drrsConfig.Zk.Ip}, time.Second*time.Duration(drrsConfig.Zk.Timeout))
+	if err != nil {
+		drrs_master_list = nil
+		return err
+	}
+	children, stat, zkChannel, err := c.ChildrenW(drrsConfig.Zk.Addr)
+	if err != nil {
+		drrs_master_list = nil
+		return err
+	}
+	go watchZNode(zkChannel)
+
+	nzk := stat.NumChildren
+	if nzk <= 0 {
+		drrs_master_list = nil
+		return zk.ErrNoChildrenForEphemerals
+	}
+	for i := range children {
+		absAddr := fmt.Sprintf("%s/%s", drrsConfig.Zk.Addr, children[i])
+		data_get, _, err := c.Get(absAddr)
+		if err != nil {
+			return err
+		}
+		data := string(data_get)
+		if data == "" {
+			return zk.ErrInvalidPath
+		}
+		drrs_master_list = append(drrs_master_list, data)
+	}
+	return nil
+}
+
 func QueryOne(para cmodel.GraphQueryParam) (resp *cmodel.GraphQueryResponse, err error) {
+
+	cfg := g.Config()
+
 	start, end := para.Start, para.End
 	endpoint, counter := para.Endpoint, para.Counter
+
+	if cfg.Drrs.Enabled { //drrs
+		md5 := Md5(endpoint + "/" + counter)
+		filename := RrdFileName(md5)
+		drrs_master, err := DrrsNodeRing.GetNode(filename)
+		res := cmodel.GraphQueryResponse{Endpoint: endpoint, Counter: counter}
+		datas, err := Fetch(filename, para.ConsolFun, start, end, drrs_master)
+		if err != nil {
+			//fetch出错，重试两次，看是不是master挂了，尝试ck分配新的master。
+			ok := false
+			for i := 0; i < 2; i++ {
+				time.Sleep(time.Second * 10)
+				drrs_master, err = DrrsNodeRing.GetNode(filename)
+				if err != nil {
+					log.Println("[DRRS ERROR] DRRS GET NODE RING ERROR:", err)
+					break
+				}
+				datas, err = Fetch(filename, para.ConsolFun, start, end, drrs_master)
+				if err == nil {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				log.Println("[DRRS ERROR] RRD FETCH ERROR: ", err)
+				return nil, err
+			}
+		}
+		res.Values = datas
+		return &res, nil
+	}
 
 	pool, addr, err := selectPool(endpoint, counter)
 	if err != nil {
@@ -274,9 +406,43 @@ func initConnPools() {
 	}
 	GraphConnPools = spool.CreateSafeRpcConnPools(cfg.Graph.MaxConns, cfg.Graph.MaxIdle,
 		cfg.Graph.ConnTimeout, cfg.Graph.CallTimeout, graphInstances.ToSlice())
+
+	if cfg.Drrs.Enabled { //drrs
+		if drrs_master_list != nil {
+			var addrs []*net.TCPAddr
+			for _, addr := range drrs_master_list {
+				//初始化drrs
+				tcpAddr, err := net.ResolveTCPAddr("tcp4", addr)
+				if err != nil {
+					log.Fatalln("[DRRS FATALL] config file:", cfg, "is not correct, cannot resolve drrs master tcp address. err:", err)
+				}
+				addrs = append(addrs, tcpAddr)
+			}
+			err := sdk.DRRSInit(addrs)
+			if err != nil {
+				log.Fatalln("[DRRS FATALL] StartSendTasks: DRRS init error: ", err)
+				return
+			}
+		}
+	}
 }
 
 func initNodeRings() {
 	cfg := g.Config()
+
+	err := initDrrsMasterList(cfg.Drrs) //drrs
+	if err != nil {                     //drrs
+		log.Fatalln("[DRRS FATALL] init drrs zookeeper list acorrding to config file:", cfg, "fail:", err)
+	}
+
 	GraphNodeRing = rings.NewConsistentHashNodesRing(cfg.Graph.Replicas, cutils.KeysOfMap(cfg.Graph.Cluster))
+	if cfg.Drrs.Enabled { //drrs
+		if drrs_master_list != nil {
+			DrrsNodeRing = rings.NewConsistentHashNodesRing(cfg.Drrs.Replicas, drrs_master_list)
+		} else {
+			DrrsNodeRing = nil
+		}
+	} else {
+		DrrsNodeRing = nil
+	}
 }

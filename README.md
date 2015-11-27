@@ -1,6 +1,8 @@
 # Introduction
 
-Query面向终端用户，收到查询请求后，根据一致性哈希算法，会去相应的Graph里面，查询不同metric的数据，汇总后统一返回给用户。
+Query面向终端用户，收到查询请求后，根据一致性哈希算法，会去相应的Graph(或DRRS)里面，查询不同metric的数据，汇总后统一返回给用户。
+
+注：DRRS是京东金融集团杭州研发团队的同事开发的一个轻量级的分布式环形数据服务组件，用于监控数据的持久化和绘图。该组件作用于graph组件类似，并且能够在保证绘图效率的前提下实现秒级扩容。参考https://github.com/jdjr/drrs
 
 ## 查询历史数据
 查询过去一段时间内的历史数据，使用接口 `HTTP POST /graph/history`。该接口不能查询最新上报的两个数据点。一个python例子，如下
@@ -109,7 +111,7 @@ curl -s "127.0.0.1:9966/health"
 {
     "debug": "false",   // 是否开启debug日志
     "http": {
-        "enabled":  true,          // 是否开启http.server
+        "enable":  true,           // 是否开启http.server
         "listen":   "0.0.0.0:9966" // http.server监听地址&端口
     },
     "graph": {
@@ -122,10 +124,24 @@ curl -s "127.0.0.1:9966/health"
             "graph-00": "test.hostname01:6070",
             "graph-01": "test.hostname02:6070"
         }
-    }
+    },
+	"drrs":{                       //启用此功能前请确保DRRS已被正确安装配置，不能与graph同时使用
+		"enabled": false,          //true/false, 表示是否开启向DRRS发送数据 #不能和graph的enable同时为true
+		"useZk": false,            //是否配置了zookeeper，若DRRS配置了多台master节点并且配置了zk，则配置为true
+		"dest" : "127.0.0.1:12300",//DRRS中master节点的地址，若没有配置zk，则这里需要配置master节点的地址，格式为ip:port
+		"replicas": 500,           //这是一致性hash算法需要的节点副本数量，建议不要变更，保持默认即可
+		"maxIdle" : 32,            //连接池相关配置，最大空闲连接数，建议保持默认
+		"zk": {                    //zookeeper的相关配置信息，若useZk设置为true，则需要配置以下信息
+			"ip" : "10.9.0.130",   //zk的ip地址，zk的端口需要保持默认的2181
+			"addr": "/drrs_master",//zk中DRRS配置信息的存放位置
+			"timeout" : 10         //zk的超时时间
+		}
+	}
 }
 ```
 
 ## 补充说明
 部署完成query组件后，请修改dashboard组件的配置、使其能够正确寻址到query组件。请确保query组件的graph列表 与 transfer的配置 一致。
+
+若配置DRRS的enable属性为true，请确保DRRS已被正确的安装部署。DRRS安装部署请参考官方github：[https://github.com/jdjr/drrs](https://github.com/jdjr/drrs)
 
