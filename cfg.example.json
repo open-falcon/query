@@ -1,7 +1,7 @@
 {
     "debug": "false",
     "http": {
-        "enabled":  true,
+        "enable":  true,
         "listen":   "0.0.0.0:9966"
     },
     "graph": {
@@ -13,5 +13,17 @@
         "cluster": {
             "node-00": "127.0.0.1:6070"
         }
-    }
+    },
+	"drrs":{
+		"enabled": false,
+		"useZk": false,
+		"dest" : "127.0.0.1:12300",
+		"replicas": 500,
+		"maxIdle" : 32,
+		"zk": {
+			"ip" : "10.9.0.130",
+			"addr": "/drrs_master",
+			"timeout" : 10
+		}
+	}
 }
