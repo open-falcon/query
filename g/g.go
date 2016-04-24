@@ -13,9 +13,10 @@ import (
 // 1.4.1 add last item counter, add proc for connpool
 // 1.4.2 rm nil items in http.responses
 // 1.4.3 spell check, make config consistent with previous
+// 1.4.4 add api of deleting one index
 
 const (
-	VERSION = "1.4.3"
+	VERSION = "1.4.4"
 )
 
 func init() {

@@ -178,4 +178,39 @@ func configGraphRoutes() {
 		StdRender(w, data, nil)
 	})
 
+	// 彻底删除 监控指标的索引
+	http.HandleFunc("/graph/index/delete", httpHandler_deleteIndex)
+}
+
+func httpHandler_deleteIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		RenderMsgJson(w, "bad http method, use post")
+		return
+	}
+
+	var body []*cmodel.GraphCounter
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&body)
+	if err != nil {
+		RenderMsgJson(w, err.Error())
+		return
+	}
+	if len(body) < 1 {
+		RenderMsgJson(w, "empty")
+		return
+	}
+
+	counter := body[0]
+	resp, err := graph.DeleteIndex(counter)
+	if err != nil {
+		RenderMsgJson(w, err.Error())
+		return
+	}
+
+	if resp.Code != 0 {
+		RenderMsgJson(w, resp.Msg)
+		return
+
+	}
+	RenderDataJson(w, "")
 }
