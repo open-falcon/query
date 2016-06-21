@@ -7,13 +7,13 @@ import (
 	"math"
 	"time"
 
-	cmodel "github.com/open-falcon/common/model"
-	cutils "github.com/open-falcon/common/utils"
+	cmodel "github.com/Cepave/common/model"
+	cutils "github.com/Cepave/common/utils"
 	rings "github.com/toolkits/consistent/rings"
 	nset "github.com/toolkits/container/set"
 	spool "github.com/toolkits/pool/simple_conn_pool"
 
-	"github.com/open-falcon/query/g"
+	"github.com/Cepave/query/g"
 )
 
 // 连接池
@@ -78,6 +78,7 @@ func QueryOne(para cmodel.GraphQueryParam) (resp *cmodel.GraphQueryResponse, err
 			pool.Release(conn)
 
 			if len(r.Resp.Values) < 1 {
+				r.Resp.Values = []*cmodel.RRDData{}
 				return r.Resp, nil
 			}
 

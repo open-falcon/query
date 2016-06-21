@@ -1,0 +1,75 @@
+{
+package nqm_parser
+}
+
+Query = allParams:QueryParam* EOF {
+	var queryParams QueryParams
+	queryParams.ProvinceRelation = UNKNOWN_RELATION
+
+	setParamsError := setParams(&queryParams, allParams)
+	if setParamsError != nil {
+		return &queryParams, setParamsError
+	}
+
+	return &queryParams, setParamsError
+}
+
+QueryParam = _ param:(TimeFilter / NodeFilter) _ {
+	return param, nil
+} / paramName:ParamName ('=' ParamValue?)?  {
+	return emptyParamContent, fmt.Errorf("Unknown parameter: %q", paramName)
+}
+
+NodeFilter = nodeProperty:NodeProperty '=' stringValues:MultiLiteralString {
+	return buildParamContent(nodeProperty, stringValues), nil
+} / paramName:NodeProperty assignedValue:('=' ParamValue)? END_WORD {
+	return parseValidPramName(paramName, assignedValue)
+}
+
+TimeFilter = timeParamName:TimeParamName '=' timeValue:(ISO_8601 / UNIX_TIME) {
+	return buildParamContent(timeParamName, timeValue), nil
+} / paramName:TimeParamName assignedValue:('=' ParamValue?)? END_WORD {
+	return parseValidPramName(paramName, assignedValue)
+}
+
+NodeProperty = ("agent" / "target") '.' ("isp" / "province" / "city") {
+	return string(c.text), nil
+}
+
+TimeParamName = ("starttime" / "endtime") {
+	return string(c.text), nil
+}
+
+ParamName = [^ =\t\n\r]+ {
+	return string(c.text), nil
+}
+ParamValue = [^ \t\n\r]+ {
+	return string(c.text), nil
+}
+
+MultiLiteralString = first:LiteralString rest:(RestLiteralString)* {
+	return combineStringLiterals(first, rest), nil
+}
+
+LiteralString = [^ \t\n\r,=]+ {
+	return string(c.text), nil
+}
+
+RestLiteralString = ',' sValue:LiteralString {
+	return sValue, nil
+} / ',' errorLiteralValue:ParamValue {
+	return "", fmt.Errorf("Illegal literal value: \"%v\"", errorLiteralValue)
+}
+
+ISO_8601 = [0-9]+ '-' [0-9]+ '-' [0-9]+ ('T' [0-9]+ (':' [0-9]+ ([Z+-]? [0-9]+ (':' [0-9]+)?)?)?)? {
+	return parseIso8601(c)
+}
+
+UNIX_TIME = [0-9]+ {
+	return parseUnixTime(c)
+}
+
+_ = EMPTY_CHAR*
+END_WORD = EOF / EMPTY_CHAR+
+EMPTY_CHAR = [ \t\n\r]
+EOF = !.

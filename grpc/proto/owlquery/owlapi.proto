@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package owlapi;
+
+// The query service definition.
+service OwlQuery {
+  // Sends a query to server
+  rpc Query (QueryInput) returns (QueryReply) {}
+}
+
+// query string that will send to server
+message QueryInput {
+  int32 startTs = 1;
+  int32 endTs = 2;
+  string computeMethod = 3;
+  string endpoint = 4;
+  string counter = 5;
+}
+
+// The response message from server
+message QueryReply {
+  string result = 1;
+}

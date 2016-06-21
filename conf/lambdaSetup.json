@@ -1,0 +1,32 @@
+[
+  {
+    "funcation_name": "avgCompare",
+    "file_path": "./js/avgCompare.js",
+    "params": ["cond:string"],
+    "description": "Get result that bigger or equal or small than the avg value of counter from all records"
+  },
+  {
+    "funcation_name": "top",
+    "file_path": "./js/top.js",
+    "params": ["limit:int", "orderby:string", "sortby:string"],
+    "description": "get top n result based on avg values of counter"
+  },
+  {
+    "funcation_name": "sumAll",
+    "file_path": "./js/sumAll.js",
+    "params": ["aliasName:string"],
+    "description": ""
+  },
+  {
+    "funcation_name": "limit",
+    "file_path": "./js/limit.js",
+    "params": ["limit:int"],
+    "description": "get first n records"
+  },
+  {
+    "funcation_name": "topDiff",
+    "file_path": "./js/topDiff.js",
+    "params": ["limit:int", "orderby:string", "sortby:string"],
+    "description": "get diff value of each 2 point and retrun top n"
+  }
+]

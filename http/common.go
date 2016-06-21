@@ -6,7 +6,7 @@ import (
 
 	"github.com/toolkits/file"
 
-	"github.com/open-falcon/query/g"
+	"github.com/Cepave/query/g"
 )
 
 func configCommonRoutes() {

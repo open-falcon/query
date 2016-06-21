@@ -3,12 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/open-falcon/query/g"
-	"github.com/open-falcon/query/graph"
-	"github.com/open-falcon/query/http"
-	"github.com/open-falcon/query/proc"
+	"github.com/Cepave/query/conf"
+	"github.com/Cepave/query/database"
+	"github.com/Cepave/query/g"
+	ginHttp "github.com/Cepave/query/gin_http"
+	"github.com/Cepave/query/graph"
+	"github.com/Cepave/query/grpc"
+	"github.com/Cepave/query/http"
+	"github.com/Cepave/query/proc"
 )
 
 func main() {
@@ -28,14 +33,41 @@ func main() {
 
 	// config
 	g.ParseConfig(*cfg)
+	gconf := g.Config()
 	// proc
 	proc.Start()
 
 	// graph
 	graph.Start()
 
-	// http
-	http.Start()
+	grpcMsg := make(chan string)
+	if gconf.Grpc.Enabled {
+		// grpc
+		go grpc.Start(grpcMsg)
+	}
 
-	select {}
+	ginMsg := make(chan string)
+
+	if gconf.GinHttp.Enabled {
+		//lambdaSetup
+		database.Init()
+		conf.ReadConf("./conf/lambdaSetup.json")
+		go ginHttp.StartWeb(ginMsg)
+	}
+
+	httpMsg := make(chan string)
+
+	if gconf.Http.Enabled {
+		// http
+		go http.Start(httpMsg)
+	}
+
+	select {
+	case <-grpcMsg:
+		log.Printf("%v is crashed", grpcMsg)
+	case <-ginMsg:
+		log.Printf("%v is crashed", ginMsg)
+	case <-httpMsg:
+		log.Printf("%v is crashed", ginMsg)
+	}
 }
