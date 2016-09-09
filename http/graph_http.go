@@ -15,6 +15,7 @@ type GraphHistoryParam struct {
 	Start            int                     `json:"start"`
 	End              int                     `json:"end"`
 	CF               string                  `json:"cf"`
+	Step             int                     `json:"step"`
 	EndpointCounters []cmodel.GraphInfoParam `json:"endpoint_counters"`
 }
 
@@ -46,6 +47,7 @@ func configGraphRoutes() {
 				ConsolFun: body.CF,
 				Endpoint:  ec.Endpoint,
 				Counter:   ec.Counter,
+				Step:      body.Step,
 			}
 			result, err := graph.QueryOne(request)
 			if err != nil {
